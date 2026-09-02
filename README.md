@@ -14,11 +14,15 @@ Requires Node 20+ and a PostgreSQL database.
 
 ```bash
 npm install
-cp .env.example .env          # then set DATABASE_URL
+cp .env.example .env          # then set DATABASE_URL and DATABASE_URL_UNPOOLED
 npx prisma migrate deploy     # create the schema
 npm run db:seed               # subjects, levels and demo accounts
 npm run dev                   # http://localhost:3000
 ```
+
+Two connection strings are needed because schema changes cannot go through a
+connection pooler. Against a plain local Postgres set both to the same value;
+hosted Postgres that pools by default supplies both separately.
 
 ### Demo accounts
 
@@ -63,27 +67,50 @@ npm run test:e2e
 
 ## Deploying
 
-The app needs a PostgreSQL database — it will build without one, but every page
-that touches data fails at runtime until `DATABASE_URL` is set.
+The app needs a PostgreSQL database — it will not deploy without one, because
+the build runs migrations.
 
-On Vercel (or any host):
+### On Vercel
 
-1. Provision Postgres — Vercel Postgres, Neon and Supabase all work.
-2. Set `DATABASE_URL` in the project's environment variables, for **all**
-   environments you deploy (production and preview builds each need it).
-3. Run `npx prisma migrate deploy` against that database once, then
-   `npm run db:seed` if you want the subject and level lists populated.
-   The seed also creates demo accounts, so skip it on anything public.
+"Vercel Postgres" is no longer a first-party product; Vercel transitioned those
+stores to Neon and now offers databases through the Vercel Marketplace.
 
-`npm run build` runs `prisma generate` before `next build`, which is required
-on hosts that cache `node_modules` between builds. No page is prerendered at
-build time, so the build itself never needs to reach the database.
+1. Project → **Storage** → **Create Database** → pick **Neon** (Supabase and
+   Prisma Postgres also work, but only Neon is described here).
+2. **Storage → your database → Connect Project**, select this project, and tick
+   **Development, Preview and Production**. The integration then sets
+   `DATABASE_URL` and `DATABASE_URL_UNPOOLED` itself — the two variables this
+   app expects — so there is nothing to copy by hand.
+3. Optionally enable preview branching under **Advanced Options → Deployments
+   Configuration**, which gives every preview deployment its own isolated
+   database branch instead of sharing one.
 
-`vercel.json` pins the framework, install and build commands explicitly. A
-Vercel project created against an empty repository stores a "no framework"
-preset and does not revisit it when a framework later appears, which makes
-deployments fail in a way the repository alone cannot explain — declaring it
-here overrides that.
+`vercel.json` pins the framework, install and build commands. The build command
+runs `prisma migrate deploy` before `next build`, so every deployment brings its
+own database up to date — which is what makes preview branching work, since each
+preview branch starts empty.
+
+The trade-off is that a deployment now fails if it cannot reach a database,
+where previously it would build green and only fail when someone loaded a page.
+That is the intended behaviour: a deployment that cannot serve a request should
+not report success.
+
+Note that the two variables fail differently, which is worth knowing when
+debugging. `DATABASE_URL_UNPOOLED` is read only by the Prisma CLI, so a missing
+one does not affect a running app at all — it fails `prisma migrate` instead,
+and therefore now fails the build. `DATABASE_URL` is what the app itself
+reads.
+
+`vercel.json` also matters for a second reason. A Vercel project created against
+an empty repository stores a "no framework" preset and does not revisit it when
+a framework later appears, which makes deployments fail in a way the repository
+alone cannot explain. Declaring it here overrides that.
+
+Seeding is a separate, manual step — `npm run db:seed` — and is deliberately not
+part of the build. It creates demo accounts with a known password, so it should
+never run against anything publicly reachable. To populate only the subject and
+level lists on a real deployment, the seed would need splitting into reference
+data and demo data first.
 
 ## How it is built
 
