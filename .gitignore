@@ -2,8 +2,11 @@ node_modules/
 .next/
 out/
 build/
-.env
-.env.local
+# Every local env file, however it was created — `vercel env pull` writes
+# several different names, and any of them may hold a production connection
+# string. The example file is the one deliberate exception.
+.env*
+!.env.example
 *.log
 .DS_Store
 next-env.d.ts
