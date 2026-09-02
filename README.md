@@ -79,6 +79,12 @@ On Vercel (or any host):
 on hosts that cache `node_modules` between builds. No page is prerendered at
 build time, so the build itself never needs to reach the database.
 
+`vercel.json` pins the framework, install and build commands explicitly. A
+Vercel project created against an empty repository stores a "no framework"
+preset and does not revisit it when a framework later appears, which makes
+deployments fail in a way the repository alone cannot explain — declaring it
+here overrides that.
+
 ## How it is built
 
 - **Next.js 15** (App Router) with React 19 Server Components and server
