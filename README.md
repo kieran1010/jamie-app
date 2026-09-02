@@ -106,11 +106,39 @@ an empty repository stores a "no framework" preset and does not revisit it when
 a framework later appears, which makes deployments fail in a way the repository
 alone cannot explain. Declaring it here overrides that.
 
-Seeding is a separate, manual step — `npm run db:seed` — and is deliberately not
-part of the build. It creates demo accounts with a known password, so it should
-never run against anything publicly reachable. To populate only the subject and
-level lists on a real deployment, the seed would need splitting into reference
-data and demo data first.
+### Seeding a deployed database
+
+Seeding is a separate, manual step and deliberately not part of the build, so
+that a redeploy can never overwrite real data.
+
+Migrations create the schema, but the subject and level lists are data. Until
+they exist the search filters render empty, so a freshly deployed database needs
+seeding once. Take the connection string from the Vercel dashboard (Project →
+Settings → Environment Variables) or the Neon console, and pass it inline for a
+single command:
+
+```bash
+DATABASE_URL='postgres://…' npm run db:seed
+```
+
+Only `DATABASE_URL` is needed here: `npm run db:seed` runs the seed script
+directly through Prisma Client, which never reads the unpooled variable. The
+seed is idempotent, so running it twice is harmless.
+
+Three things to be careful of, because this is a production credential:
+
+- **Pass it inline, do not put it in `.env`.** A `.env` pointing at production
+  means `npm run dev` quietly edits live data.
+- **Never run `npm run db:reset` against it.** That drops every table. Prisma
+  asks for confirmation first, but do not rely on being awake enough to read it.
+- The command lands in your shell history. Prefix it with a space if your shell
+  is set to `HISTCONTROL=ignorespace`, or rotate the credential afterwards.
+
+The seed creates ten demo tutors and three demo accounts, all with the password
+`password123`. That is fine for a private deployment and not fine for a public
+one. Making it safe for a public deployment means splitting the seed into
+reference data (subjects and levels) and demo data (tutors and accounts) so only
+the former runs; that split has not been made yet.
 
 ## How it is built
 
