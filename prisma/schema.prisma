@@ -1,0 +1,215 @@
+// Tutorly — data model
+//
+// Money is stored in pence (Int) throughout, never as a float.
+// Availability times are minutes-from-midnight in Europe/London local time.
+// Booking instants (startAt/endAt) are absolute UTC timestamps.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SEEKER
+  TUTOR
+  ADMIN
+}
+
+enum DeliveryMode {
+  ONLINE
+  IN_PERSON
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(SEEKER)
+  createdAt    DateTime @default(now())
+
+  tutorProfile TutorProfile?
+  students     Student[]
+  sessions     Session[]
+  bookingsMade Booking[]     @relation("SeekerBookings")
+}
+
+/// Server-side session. The cookie holds only the opaque token.
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// A child that a parent account books lessons for.
+/// A booking with studentId == null is the account holder learning themselves.
+model Student {
+  id        String    @id @default(cuid())
+  ownerId   String
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  yearGroup String?
+  createdAt DateTime  @default(now())
+  bookings  Booking[]
+
+  @@index([ownerId])
+}
+
+model TutorProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  headline        String
+  bio             String  @db.Text
+  hourlyRatePence Int
+  yearsExperience Int     @default(0)
+  qualifications  String? @db.Text
+
+  // Location. Coordinates are cached from the postcode at save time so that
+  // search never has to call the geocoder.
+  postcode          String
+  outcode           String
+  latitude          Float?
+  longitude         Float?
+  travelRadiusMiles Int    @default(5)
+
+  offersOnline   Boolean @default(true)
+  offersInPerson Boolean @default(true)
+
+  // Safeguarding. `verified` is set by an admin only — never by the tutor.
+  dbsCertificateNumber String?
+  dbsIssuedOn          DateTime?
+  verified             Boolean   @default(false)
+  verifiedAt           DateTime?
+
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subjects     TutorSubject[]
+  availability AvailabilityRule[]
+  exceptions   AvailabilityException[]
+  bookings     Booking[]
+
+  @@index([published, verified])
+  @@index([latitude, longitude])
+}
+
+model Subject {
+  id       String @id @default(cuid())
+  name     String @unique
+  slug     String @unique
+  category String
+
+  tutorSubjects TutorSubject[]
+  bookings      Booking[]
+}
+
+model Level {
+  id        String @id @default(cuid())
+  name      String @unique
+  slug      String @unique
+  sortOrder Int    @default(0)
+
+  tutorSubjects TutorSubject[]
+  bookings      Booking[]
+}
+
+/// One row per subject *and* level a tutor teaches, so a tutor can offer
+/// Maths to A-Level but Physics only to GCSE.
+model TutorSubject {
+  id             String       @id @default(cuid())
+  tutorProfileId String
+  tutorProfile   TutorProfile @relation(fields: [tutorProfileId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  levelId        String
+  level          Level        @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@unique([tutorProfileId, subjectId, levelId])
+  @@index([subjectId, levelId])
+}
+
+/// Recurring weekly availability, e.g. weekday 2 (Tue) 16:00–18:00.
+model AvailabilityRule {
+  id             String       @id @default(cuid())
+  tutorProfileId String
+  tutorProfile   TutorProfile @relation(fields: [tutorProfileId], references: [id], onDelete: Cascade)
+  weekday        Int // 0 = Sunday … 6 = Saturday
+  startMinute    Int // minutes from midnight, Europe/London
+  endMinute      Int
+
+  @@unique([tutorProfileId, weekday, startMinute, endMinute])
+  @@index([tutorProfileId])
+}
+
+/// A one-off block of unavailability that overrides the weekly pattern
+/// (holidays, a conference, a single busy afternoon).
+/// Null start/end means the whole day is blocked.
+model AvailabilityException {
+  id             String       @id @default(cuid())
+  tutorProfileId String
+  tutorProfile   TutorProfile @relation(fields: [tutorProfileId], references: [id], onDelete: Cascade)
+  date           DateTime     @db.Date
+  startMinute    Int?
+  endMinute      Int?
+  note           String?
+
+  @@index([tutorProfileId, date])
+}
+
+model Booking {
+  id             String       @id @default(cuid())
+  tutorProfileId String
+  tutorProfile   TutorProfile @relation(fields: [tutorProfileId], references: [id], onDelete: Cascade)
+  seekerId       String
+  seeker         User         @relation("SeekerBookings", fields: [seekerId], references: [id], onDelete: Cascade)
+  studentId      String?
+  student        Student?     @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  levelId   String
+  level     Level   @relation(fields: [levelId], references: [id])
+
+  startAt DateTime // absolute UTC instant
+  endAt   DateTime
+  mode    DeliveryMode
+
+  status       BookingStatus @default(PENDING)
+  message      String?       @db.Text
+  responseNote String?       @db.Text
+  createdAt    DateTime      @default(now())
+  respondedAt  DateTime?
+
+  @@index([tutorProfileId, status])
+  @@index([seekerId])
+  @@index([tutorProfileId, startAt])
+}
+
+/// Cache of postcode -> coordinates, so a repeated search never re-calls the
+/// geocoder and a geocoder outage degrades gracefully for known postcodes.
+model PostcodeLookup {
+  postcode  String   @id
+  latitude  Float
+  longitude Float
+  cachedAt  DateTime @default(now())
+}
