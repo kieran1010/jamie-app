@@ -61,6 +61,24 @@ npm run db:reset && npm run build && npm start &
 npm run test:e2e
 ```
 
+## Deploying
+
+The app needs a PostgreSQL database — it will build without one, but every page
+that touches data fails at runtime until `DATABASE_URL` is set.
+
+On Vercel (or any host):
+
+1. Provision Postgres — Vercel Postgres, Neon and Supabase all work.
+2. Set `DATABASE_URL` in the project's environment variables, for **all**
+   environments you deploy (production and preview builds each need it).
+3. Run `npx prisma migrate deploy` against that database once, then
+   `npm run db:seed` if you want the subject and level lists populated.
+   The seed also creates demo accounts, so skip it on anything public.
+
+`npm run build` runs `prisma generate` before `next build`, which is required
+on hosts that cache `node_modules` between builds. No page is prerendered at
+build time, so the build itself never needs to reach the database.
+
 ## How it is built
 
 - **Next.js 15** (App Router) with React 19 Server Components and server

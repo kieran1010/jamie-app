@@ -4,6 +4,11 @@ import { getTaxonomy } from "@/lib/search";
 import { prisma } from "@/lib/db";
 import { buttonPrimary, Card, Field, inputClass } from "@/components/ui";
 
+// The live tutor count comes from the database, so this page must never be
+// prerendered at build time: the number would be stale, and the build would
+// need a reachable database it has no business requiring.
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [{ subjectsByCategory, levels }, tutorCount] = await Promise.all([
     getTaxonomy(),
