@@ -8,6 +8,9 @@ request a specific lesson slot that the tutor accepts or declines.
 Responsive web app — it is built to be usable on a phone browser, and there is
 no separate mobile build.
 
+**Live at <https://jamie-app-eight.vercel.app>**, deployed from `main` on
+Vercel, backed by Neon Postgres.
+
 ## Quick start
 
 Requires Node 20+ and a PostgreSQL database.
@@ -86,6 +89,9 @@ stores to Neon and now offers databases through the Vercel Marketplace.
 3. Optionally enable preview branching under **Advanced Options → Deployments
    Configuration**, which gives every preview deployment its own isolated
    database branch instead of sharing one.
+
+This project's own deployment is <https://jamie-app-eight.vercel.app>; its
+Vercel dashboard is at `vercel.com/kieran-8003s-projects/jamie-app`.
 
 `vercel.json` pins the framework, install and build commands. The build command
 runs `prisma migrate deploy` before `next build`, so every deployment brings its
