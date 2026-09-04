@@ -16,7 +16,7 @@ Requires Node 20+ and a PostgreSQL database.
 npm install
 cp .env.example .env          # then set DATABASE_URL and DATABASE_URL_UNPOOLED
 npx prisma migrate deploy     # create the schema
-npm run db:seed               # subjects, levels and demo accounts
+npm run db:seed               # subjects, levels, demo tutors and accounts
 npm run dev                   # http://localhost:3000
 ```
 
@@ -47,7 +47,9 @@ Try searching `SE1 9RT` within 20 miles.
 | `npm run dev` | Development server |
 | `npm run build` / `npm start` | Production build and serve |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run db:seed` | Seed reference data and demo accounts (safe to re-run) |
+| `npm run db:seed` | Seed everything — reference data and demo content (safe to re-run) |
+| `npm run db:seed:reference` | Subjects and levels only; runs on every deployment |
+| `npm run db:seed:demo` | Demo tutors and accounts; no-op unless `SEED_DEMO_DATA=true` |
 | `npm run db:reset` | **Wipes the database**, recreates the schema and reseeds |
 | `npm run db:studio` | Prisma Studio, to browse the data |
 | `npm run test:e2e` | Browser smoke test — see below |
@@ -108,24 +110,45 @@ alone cannot explain. Declaring it here overrides that.
 
 ### Seeding a deployed database
 
-Seeding is a separate, manual step and deliberately not part of the build, so
-that a redeploy can never overwrite real data.
+Seeding is split in two, because the two halves have opposite needs.
 
-Migrations create the schema, but the subject and level lists are data. Until
-they exist the search filters render empty, so a freshly deployed database needs
-seeding once. Take the connection string from the Vercel dashboard (Project →
-Settings → Environment Variables) or the Neon console, and pass it inline for a
-single command:
+**Reference data** — the 35 subjects and 7 levels — is what the app needs to
+function at all. Without it the search filters render empty. It runs on every
+build, is idempotent, and needs no configuration.
+
+**Demo data** — ten tutors, a parent with two children, an adult learner and an
+admin — is sample content. It is gated behind `SEED_DEMO_DATA` so the build
+step can stay in place permanently while doing nothing.
+
+To populate a deployment with demo content once:
+
+1. Set `SEED_DEMO_DATA=true` in the host's environment variables.
+2. Redeploy. The build seeds the demo accounts.
+3. **Remove the variable.** Left set, every future deploy resurrects accounts
+   you may have deliberately deleted and resets any edits to the demo tutors.
+
+Every demo account shares one password, `password123` by default. Set
+`DEMO_PASSWORD` alongside `SEED_DEMO_DATA` for anything reachable by other
+people; the seed rewrites the password on existing accounts too, so changing it
+and re-seeding genuinely locks them.
+
+The build warns on stderr when it seeds demo accounts with the default
+password, so an accidental public seeding is visible in the deployment log
+rather than silent.
+
+### Seeding from a terminal
+
+If you have the repository checked out, the connection string can be passed
+inline instead:
 
 ```bash
-DATABASE_URL='postgres://…' npm run db:seed
+DATABASE_URL='postgres://…' npm run db:seed              # everything
+DATABASE_URL='postgres://…' npm run db:seed:reference    # subjects and levels only
 ```
 
-Only `DATABASE_URL` is needed here: `npm run db:seed` runs the seed script
-directly through Prisma Client, which never reads the unpooled variable. The
-seed is idempotent, so running it twice is harmless.
-
-Three things to be careful of, because this is a production credential:
+Only `DATABASE_URL` is needed: these run through Prisma Client, which never
+reads the unpooled variable. Three things to be careful of, because this is a
+production credential:
 
 - **Pass it inline, do not put it in `.env`.** A `.env` pointing at production
   means `npm run dev` quietly edits live data.
@@ -133,12 +156,6 @@ Three things to be careful of, because this is a production credential:
   asks for confirmation first, but do not rely on being awake enough to read it.
 - The command lands in your shell history. Prefix it with a space if your shell
   is set to `HISTCONTROL=ignorespace`, or rotate the credential afterwards.
-
-The seed creates ten demo tutors and three demo accounts, all with the password
-`password123`. That is fine for a private deployment and not fine for a public
-one. Making it safe for a public deployment means splitting the seed into
-reference data (subjects and levels) and demo data (tutors and accounts) so only
-the former runs; that split has not been made yet.
 
 ## How it is built
 
